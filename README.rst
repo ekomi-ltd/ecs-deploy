@@ -311,6 +311,75 @@ You can define just the task family (e.g. ``my-task``) or you can run a specific
     $ ecs run my-cluster my-task:123 -e my-container MY_VARIABLE "my value"
 
 
+Running scheduled tasks
+=======================
+It is often the scenario that we have to run certain tasks on a repeated schedule, also known as cron jobs. This arrangement
+requires 3 component:
+
+1. An ECS Task definition that defines what image to run, role, command, environment variables etc.
+2. A cloud watch rule that triggers on said rate or based on a cron expression.
+3. A cloud watch target.
+
+
+
+A `CloudWatch event rule <https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/WhatIsCloudWatchEvents.html>`_ first has to be created something like this:
+
+.. code-block:: terraform
+
+    data "aws_caller_identity" "current" {}
+
+    resource "aws_cloudwatch_event_rule" "every_hour" {
+        name                = "every-hour"
+        description         = "The jobs triggered by this rule are invoked every hour"
+        schedule_expression = "rate(1 hour)"
+        role_arn            = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/ecsEventsRole"
+        is_enabled          = true
+    }
+
+This will only be triggering but won't be doing anything unless we attach a target with it like this:
+
+
+.. code-block:: terraform
+
+    data "aws_ecs_cluster" "cluster" {
+        cluster_name = "production-cluster"
+    }
+
+    resource "aws_ecs_task_definition" "task" {
+        # Your Task defintion here.
+    }
+
+    resource "aws_cloudwatch_event_target" "ecs_scheduled_task" {
+        target_id = "my-awesome-cron-job-name-it-whatever-you-like"
+        arn       = "${data.aws_ecs_cluster.cluster.arn}"
+        rule      = "every-hour"
+        role_arn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/ecsEventsRole"
+
+        ecs_target {
+            task_count          = 1
+            launch_type         = "EC2"
+            task_definition_arn = aws_ecs_task_definition.task.arn
+        }
+    }
+
+There are limitations with this approach that each account can have `only 100 event rules <https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/cloudwatch_limits_cwe.html>`_ (although can be increased) and each such rule can have
+only 5 targets at max. Therefore, AWS recommends to bundle the targets togheter under the same rule that are meant to be executed on the same
+sechedule. Therefore, the command to update a cron task would be::
+
+    $ ecs cron my-cluster send-emails-task every-hour
+
+This command will update the target of ``every-hour`` rule with the latest task defintion but the *target already must exist*. If there is already
+a target, it would be replaced and this approach will only support one target per CloudWatch rule.
+
+The other format is much more flexible::
+
+    $ ecs cron my-cluster send-emails-task every-hour send-email-task-id-call-it-whatever
+
+This will update the target with ID ``send-email-task-id-call-it-whatever`` under the ``every-hour`` rule if it already exists and if
+it does not, it will be created. Any ohter targets under the same rule would be in tact hence it is posisble to have multiple
+targets per CloudWatch rule.
+
+
 Run a task with a custom command
 ================================
 
@@ -384,18 +453,18 @@ The overall deployment time depends on different things:
 
 Development
 ------------
-It is highly recommended to install virtualenv and then create a virtual environment at the project root like this:
+It is highly recommended to install virtualenv and then create a virtual environment at the project root like this::
 
     $ virtualenv -p python3 ./.venv
     $ source .venv/bin/activate
 
-In order to run tests:
+In order to run tests::
 
     $ pip install tox
     $ tox -e py37
 
 You can install the package in editable mode. This will allow you to edit the files and run the `ecs` command right away in order to
-reflect the changes like so:
+reflect the changes like so::
 
     $ pip install -e .
 
@@ -409,3 +478,5 @@ Shell
 
 Ruby
   broadside - https://github.com/lumoslabs/broadside
+
+.. _CloudWatchEvents: 
