@@ -382,6 +382,24 @@ The overall deployment time depends on different things:
 - the number of ECS instances in the cluster
 
 
+Development
+------------
+It is highly recommended to install virtualenv and then create a virtual environment at the project root like this:
+
+    $ virtualenv -p python3 ./.venv
+    $ source .venv/bin/activate
+
+In order to run tests:
+
+    $ pip install tox
+    $ tox -e py37
+
+You can install the package in editable mode. This will allow you to edit the files and run the `ecs` command right away in order to
+reflect the changes like so:
+
+    $ pip install -e .
+
+
 Alternative Implementation
 --------------------------
 There are some other libraries/tools available on GitHub, which also handle the deployment of containers in AWS ECS. If you prefer another language over Python, have a look at these projects:
